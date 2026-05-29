@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from datetime import datetime
 from tqdm import tqdm
 import torch
@@ -7,14 +8,16 @@ from torch.utils.data import DataLoader,random_split
 
 from owner_classification.load_pipeline import load_dataset
 from owner_classification.network import OwnerTypeModel
-from owner_classification.evaluate import evaluate
+from owner_classification.evaluate import evaluate, score_against
 
 
-LEARNING_RATE = 1e-3
-EPOCHS = 20
+LEARNING_RATE = 5e-4
+EPOCHS = 60
 N_BATCH_SIZE = 256
-MODEL_DIR = Path(__file__).parent / "owner_classification" / "trained_models"
 EMBEDDING_MODEL = "sentence-transformers/all-mpnet-base-v2"
+
+MODEL_DIR = Path(__file__).parent / "owner_classification" / "trained_models"
+REPORT_DIR = Path(__file__).parent / "training_reports"
 
 
 def main():
@@ -30,7 +33,6 @@ def main():
     encoder_dim = train_set[0][0].shape[-1]
 
     model = OwnerTypeModel(encoder_dim, hidden_size=256)
-
 
     # Train the head
     optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
@@ -49,21 +51,19 @@ def main():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+        
+        train_score = score_against(model, train_loader)
+        val_score = score_against(model, val_loader)
 
-        model.eval()
-        correct, total = 0, 0
-        with torch.no_grad():
-            for embeds, labels in val_loader:
-                preds = model(embeds).argmax(-1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
-
-        pbar.set_postfix(val_acc=f"{correct / total:.4f}")
-
-    print(evaluate(model, test_loader))
+        pbar.set_postfix(val=f"{val_score:.3f}", tr=f"{train_score:.3f}")
 
     training_time = datetime.now() 
     stamp = training_time.strftime("%Y%m%d_%H%M%S")
+
+    evaluation = evaluate(model, test_loader)
+    with open(REPORT_DIR / f"evaluation_report_{stamp}.json", "w") as f:
+        json.dump(evaluation, f)
+
     path = f"model_{stamp}.pth"
     print(f"Saving model to {path}")
     torch.save(model.state_dict(), MODEL_DIR / path)
