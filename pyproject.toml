@@ -12,3 +12,6 @@ dependencies = [
     "tqdm>=4.67.3",
     "transformers>=5.9.0",
 ]
+
+[tool.setuptools]
+packages = ["owner_classification"]
