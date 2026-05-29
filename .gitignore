@@ -17,3 +17,4 @@ wheels/
 
 # Models / cached embeddings
 *.pt
+*.pth
